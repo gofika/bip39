@@ -132,7 +132,7 @@ func (m *Mnemonic) EntropyToMnemonic(entropy []byte) (string, error) {
 
 // EntropyFromMnemonic converts a mnemonic to entropy.
 func (m *Mnemonic) EntropyFromMnemonic(mnemonic string) ([]byte, error) {
-	words, _ := splitMnemonic(mnemonic)
+	words, _ := SplitMnemonic(mnemonic)
 	wordsCount := len(words)
 	if !isValidWordsSize(wordsCount) {
 		return nil, ErrInvalidNumberWords

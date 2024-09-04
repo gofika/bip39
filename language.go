@@ -89,7 +89,21 @@ func innerLanguages() map[Language]languageData {
 	}
 }
 
-func splitMnemonic(mnemonic string) (words []string, delimiter string) {
+// SplitMnemonic splits a mnemonic into words and delimiter.
+// If the delimiter is a Japanese space, then the language must be Japanese.
+//
+// Example:
+//
+//	words, delimiter := SplitMnemonic("おさえる　けむり　けしごむ　うせつ　もちろん　とさか　いはつ　ざっか　たりる　こさめ　いわい　にいがた　こてい　ちんもく　がぞう")
+//	fmt.Println(words) // ["おさえる", "けむり", "けしごむ", "うせつ", "もちろん", "とさか", "いはつ", "ざっか", "たりる", "こさめ", "いわい", "にいがた", "こてい", "ちんもく", "がぞう"]
+//	fmt.Println(delimiter) // "　"
+//
+// Example:
+//
+//	words, delimiter := SplitMnemonic("carbon elder drip best unlock pool athlete fortune mixture exist bachelor quick faculty obey cliff")
+//	fmt.Println(words) // ["carbon", "elder", "drip", "best", "unlock", "pool", "athlete", "fortune", "mixture", "exist", "bachelor", "quick", "faculty", "obey", "cliff"]
+//	fmt.Println(delimiter) // " "
+func SplitMnemonic(mnemonic string) (words []string, delimiter string) {
 	delimiter = regularSpace
 	words = strings.FieldsFunc(strings.TrimSpace(mnemonic), func(r rune) bool {
 		if r == japaneseSpace {
@@ -100,4 +114,22 @@ func splitMnemonic(mnemonic string) (words []string, delimiter string) {
 		return ok
 	})
 	return
+}
+
+// NormalizeMnemonic normalizes the mnemonic.
+//
+// Example:
+//
+//	mnemonic := "おさえる　けむり　　けしごむ　うせつ　もちろん　　とさか　いはつ　ざっか　たりる　　こさめ　いわい　　にいがた　こてい　ちんもく　がぞう　"
+//	mnemonic = NormalizeMnemonic(mnemonic)
+//	fmt.Println(mnemonic) // おさえる　けむり　けしごむ　うせつ　もちろん　とさか　いはつ　ざっか　たりる　こさめ　いわい　にいがた　こてい　ちんもく　がぞう
+//
+// Example:
+//
+//	mnemonic := "carbon     elder  drip best unlock pool athlete   fortune mixture exist   bachelor quick faculty    obey cliff"
+//	mnemonic = NormalizeMnemonic(mnemonic)
+//	fmt.Println(mnemonic) // carbon elder drip best unlock pool athlete fortune mixture exist bachelor quick faculty obey cliff
+func NormalizeMnemonic(mnemonic string) string {
+	words, delimiter := SplitMnemonic(mnemonic)
+	return strings.Join(words, delimiter)
 }

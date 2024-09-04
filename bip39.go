@@ -58,7 +58,7 @@ func DetectLanguage(mnemonic string, opts ...DetectLanguageOption) (languages []
 			}
 		}
 	}
-	words, delimiter := splitMnemonic(mnemonic)
+	words, delimiter := SplitMnemonic(mnemonic)
 	if delimiter == string(japaneseSpace) {
 		// If the delimiter is a Japanese space, then the language must be Japanese.
 		for lang := range possible {
