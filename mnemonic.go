@@ -83,20 +83,22 @@ func NewMnemonic(opts ...NewMnemonicOption) (*Mnemonic, error) {
 
 // GenerateMnemonic generates a new mnemonic.
 //
-// The default entropy size is 16 bytes.
-// If you want to set the entropy size, use WithEntropySize() option.
-// The entropy size must be in [16, 20, 24, 28, 32].
+// The default entropy bits is 128.
+// If you want to set the entropy bits, use WithEntropyBits() option.
+// The entropy bits must be in [128, 160, 192, 224, 256].
+// Corresponding to [16, 20, 24, 28, 32] bytes.
 func (m *Mnemonic) GenerateMnemonic(opts ...GenerateMnemonicOption) (string, error) {
 	options := &GenerateMnemonicOptions{
-		entropySize: 16,
+		entropyBits: 128,
 	}
 	for _, opt := range opts {
 		opt(options)
 	}
-	if !validEntropySize(options.entropySize) {
+	if !isValidEntropyBits(options.entropyBits) {
 		return "", ErrInvalidEntropy
 	}
-	entropy := make([]byte, options.entropySize)
+	entropySize := options.entropyBits / 8
+	entropy := make([]byte, entropySize)
 	_, err := rand.Read(entropy)
 	if err != nil {
 		return "", err
@@ -107,8 +109,9 @@ func (m *Mnemonic) GenerateMnemonic(opts ...GenerateMnemonicOption) (string, err
 // EntropyToMnemonic converts entropy to a mnemonic.
 //
 // The entropy must be in [16, 20, 24, 28, 32] bytes.
+// Corresponding to [128, 160, 192, 224, 256] bits.
 func (m *Mnemonic) EntropyToMnemonic(entropy []byte) (string, error) {
-	if !validEntropySize(len(entropy)) {
+	if !isValidEntropyBits(len(entropy) * 8) {
 		return "", ErrInvalidEntropy
 	}
 
@@ -131,7 +134,7 @@ func (m *Mnemonic) EntropyToMnemonic(entropy []byte) (string, error) {
 func (m *Mnemonic) EntropyFromMnemonic(mnemonic string) ([]byte, error) {
 	words, _ := splitMnemonic(mnemonic)
 	wordsCount := len(words)
-	if !validWordsSize(wordsCount) {
+	if !isValidWordsSize(wordsCount) {
 		return nil, ErrInvalidNumberWords
 	}
 
@@ -214,12 +217,12 @@ func padByteSlice(slice []byte, length int) []byte {
 
 var validWordsSizes = []int{12, 15, 18, 21, 24}
 
-func validWordsSize(count int) bool {
+func isValidWordsSize(count int) bool {
 	return slices.Contains(validWordsSizes, count)
 }
 
-var validEntropySizes = []int{16, 20, 24, 28, 32}
+var validEntropyBits = []int{128, 160, 192, 224, 256}
 
-func validEntropySize(entropyLength int) bool {
-	return slices.Contains(validEntropySizes, entropyLength)
+func isValidEntropyBits(entropyBits int) bool {
+	return slices.Contains(validEntropyBits, entropyBits)
 }

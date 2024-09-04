@@ -34,17 +34,17 @@ func WithPassphrase(passphrase string) func(*NewSeedOptions) {
 
 // GenerateMnemonicOptions options for GenerateMnemonic function
 type GenerateMnemonicOptions struct {
-	// entropySize is the size of the entropy in bytes.
-	entropySize int
+	// entropyBits is the bits of the entropy.
+	entropyBits int
 }
 
 // GenerateMnemonicOption a function that modifies GenerateMnemonicOptions
 type GenerateMnemonicOption func(*GenerateMnemonicOptions)
 
-// WithEntropySize sets the size of the entropy in bytes.
-func WithEntropySize(entropySize int) func(*GenerateMnemonicOptions) {
+// WithEntropyBits sets the bits of the entropy.
+func WithEntropyBits(entropyBits int) func(*GenerateMnemonicOptions) {
 	return func(options *GenerateMnemonicOptions) {
-		options.entropySize = entropySize
+		options.entropyBits = entropyBits
 	}
 }
 
