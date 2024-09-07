@@ -77,7 +77,7 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
-		// default entropy size is 16 bytes.
+		// default entropy 128 bits
 		mnemonic, err := m.GenerateMnemonic()
 		if err != nil {
 			panic(err)
@@ -95,8 +95,8 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
-		// set entropy size 32 bytes.
-		mnemonic, err := m.GenerateMnemonic(bip39.WithEntropySize(32))
+		// set entropy 256 bits
+		mnemonic, err := m.GenerateMnemonic(bip39.WithEntropyBits(256))
 		if err != nil {
 			panic(err)
 		}

@@ -104,4 +104,23 @@ func TestNewSeed(t *testing.T) {
 	if len(seed) != 64 {
 		t.Fatal("invalid seed")
 	}
+
+	// NewMnemonic with Japanese
+	{
+		// generate mnemonic with Japanese
+		m, err := NewMnemonic(WithLanguage(Japanese))
+		if err != nil {
+			t.Fatal(err)
+		}
+		// set entropy 256 bits
+		mnemonic, err := m.GenerateMnemonic(WithEntropyBits(256))
+		if err != nil {
+			t.Fatal(err)
+		}
+		// set passphrase "gofika"
+		seed := NewSeed(mnemonic, WithPassphrase("gofika"))
+		if len(seed) != 64 {
+			t.Fatal("invalid seed")
+		}
+	}
 }
