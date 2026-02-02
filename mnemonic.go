@@ -130,6 +130,151 @@ func (m *Mnemonic) EntropyToMnemonic(entropy []byte) (string, error) {
 	return strings.Join(words, m.delimiter), nil
 }
 
+// ArbitraryEntropyToMnemonic converts arbitrary length entropy to a mnemonic.
+// This is NOT strict BIP39 compliant. Use this for custom applications that need
+// to encode payloads smaller than 128 bits or of arbitrary length.
+//
+// If the entropy is not a multiple of 32 bits (4 bytes), it will be padded with
+// zero bytes to the next 32-bit boundary. The minimum size after padding is 4 bytes (32 bits).
+//
+// The resulting mnemonic will have a number of words based on the padded entropy size:
+// - 4 bytes (32 bits) + 1 checksum bit = 3 words
+// - 8 bytes (64 bits) + 2 checksum bits = 6 words
+// - 12 bytes (96 bits) + 3 checksum bits = 9 words
+// - 16 bytes (128 bits) + 4 checksum bits = 12 words (standard BIP39)
+// - etc.
+func (m *Mnemonic) ArbitraryEntropyToMnemonic(entropy []byte) (string, error) {
+	if len(entropy) == 0 {
+		return "", ErrInvalidEntropy
+	}
+
+	// Pad to next 32-bit boundary if needed
+	entropyBits := len(entropy) * 8
+	remainder := entropyBits % 32
+	if remainder != 0 {
+		paddingBytes := (32 - remainder) / 8
+		entropy = append(entropy, make([]byte, paddingBytes)...)
+	}
+
+	// Compute checksum based on padded entropy
+	checksum, err := computeChecksum(entropy)
+	if err != nil {
+		return "", err
+	}
+
+	// Calculate how many checksum bits we need (1 bit per 32 bits of entropy)
+	checksumBits := len(entropy) / 4
+
+	// We need to append enough checksum bytes to cover all checksum bits
+	// For every 8 checksum bits, we need 1 byte
+	checksumBytes := (checksumBits + 7) / 8
+	entropyWithChecksum := make([]byte, len(entropy)+checksumBytes)
+	copy(entropyWithChecksum, entropy)
+	
+	// Fill in the checksum bytes
+	for i := 0; i < checksumBytes; i++ {
+		entropyWithChecksum[len(entropy)+i] = checksum
+	}
+
+	// Calculate number of words (each word is 11 bits)
+	totalBits := len(entropy)*8 + checksumBits
+	wordCount := totalBits / 11
+
+	var words []string
+	for i := 0; i < wordCount; i++ {
+		index := extractBits(entropyWithChecksum, i*11, 11)
+		words = append(words, m.wordList[index])
+	}
+
+	return strings.Join(words, m.delimiter), nil
+}
+
+// ArbitraryMnemonicToEntropy converts a mnemonic created with ArbitraryEntropyToMnemonic
+// back to entropy bytes. This is the reverse operation of ArbitraryEntropyToMnemonic.
+//
+// This is NOT strict BIP39 compliant. The returned entropy will be padded to a 32-bit
+// boundary (matching what ArbitraryEntropyToMnemonic does).
+//
+// Supported word counts: 3, 6, 9, 12, 15, 18, 21, 24 words
+// - 3 words = 4 bytes (32 bits)
+// - 6 words = 8 bytes (64 bits)
+// - 9 words = 12 bytes (96 bits)
+// - 12 words = 16 bytes (128 bits) (standard BIP39)
+// - etc.
+func (m *Mnemonic) ArbitraryMnemonicToEntropy(mnemonic string) ([]byte, error) {
+	words, _ := SplitMnemonic(mnemonic)
+	wordsCount := len(words)
+
+	// For arbitrary entropy, we support word counts that are multiples of 3
+	if wordsCount == 0 || wordsCount%3 != 0 {
+		return nil, ErrInvalidNumberWords
+	}
+
+	// Calculate entropy size: each 3 words = 4 bytes (32 bits) of entropy + 1 checksum bit
+	entropySize := (wordsCount / 3) * 4
+	checksumBits := entropySize / 4
+
+	// Decode the words into a big.Int
+	b := big.NewInt(0)
+	for _, word := range words {
+		index, ok := m.wordMap[word]
+		if !ok {
+			return nil, ErrInvalidMnemonic
+		}
+		var wordBytes [2]byte
+		binary.BigEndian.PutUint16(wordBytes[:], uint16(index))
+		b = b.Mul(b, shift11BitsMask)
+		b = b.Or(b, big.NewInt(0).SetBytes(wordBytes[:]))
+	}
+
+	// Extract checksum bits
+	checksumMask := big.NewInt((1 << checksumBits) - 1)
+	checksum := big.NewInt(0)
+	checksum = checksum.And(b, checksumMask)
+
+	// Remove checksum bits to get entropy
+	b.Div(b, big.NewInt(0).Add(checksumMask, bigOne))
+
+	// The entropy is the underlying bytes of the big.Int
+	entropy := b.Bytes()
+	entropy = padByteSlice(entropy, entropySize)
+
+	// Verify the checksum
+	entropyChecksumByte, err := computeChecksum(entropy)
+	if err != nil {
+		return nil, err
+	}
+
+	// Extract the needed checksum bits from the computed checksum
+	// For checksumBits <= 8, we shift and compare directly
+	// For checksumBits > 8, we only use the high-order bits that fit in one byte
+	var entropyChecksum *big.Int
+	if checksumBits <= 8 {
+		checksumShift := 8 - checksumBits
+		entropyChecksum = big.NewInt(int64(entropyChecksumByte >> checksumShift))
+	} else {
+		// When we have more than 8 checksum bits, we only use the first 8 bits
+		// The checksum repeats the same byte pattern
+		entropyChecksum = big.NewInt(int64(entropyChecksumByte))
+		// Shift left to account for the additional bits beyond 8
+		additionalBits := checksumBits - 8
+		entropyChecksum.Lsh(entropyChecksum, uint(additionalBits))
+		// Add the remaining bits (same byte repeated)
+		for i := 0; i < additionalBits; i++ {
+			bit := (entropyChecksumByte >> (7 - (i % 8))) & 1
+			if bit == 1 {
+				entropyChecksum.SetBit(entropyChecksum, additionalBits-1-i, 1)
+			}
+		}
+	}
+
+	if checksum.Cmp(entropyChecksum) != 0 {
+		return nil, ErrChecksumIncorrect
+	}
+
+	return entropy, nil
+}
+
 // EntropyFromMnemonic converts a mnemonic to entropy.
 func (m *Mnemonic) EntropyFromMnemonic(mnemonic string) ([]byte, error) {
 	words, _ := SplitMnemonic(mnemonic)
