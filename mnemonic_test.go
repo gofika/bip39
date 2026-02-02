@@ -718,3 +718,140 @@ func TestArbitraryEntropyLargeWithPadding(t *testing.T) {
 		})
 	}
 }
+
+func TestArbitraryEntropyLargeRoundtrip(t *testing.T) {
+	m, err := NewMnemonic()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Test various large entropy sizes with intensive roundtrip testing
+	tests := []struct {
+		name        string
+		entropySize int
+	}{
+		{"256 bits (32 bytes)", 32},
+		{"288 bits (36 bytes)", 36},
+		{"320 bits (40 bytes)", 40},
+		{"384 bits (48 bytes)", 48},
+		{"512 bits (64 bytes)", 64},
+		{"768 bits (96 bytes)", 96},
+		{"1024 bits (128 bytes)", 128},
+		{"1536 bits (192 bytes)", 192},
+		{"2048 bits (256 bytes)", 256},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Test multiple iterations with different entropy patterns
+			for iteration := 0; iteration < 5; iteration++ {
+				// Create entropy with different patterns each iteration
+				entropy := make([]byte, tt.entropySize)
+				for i := range entropy {
+					entropy[i] = byte((i*iteration + iteration) % 256)
+				}
+
+				// Entropy -> Mnemonic
+				mnemonic, err := m.ArbitraryEntropyToMnemonic(entropy)
+				if err != nil {
+					t.Fatalf("iteration %d: failed to convert entropy to mnemonic: %v", iteration, err)
+				}
+
+				// Verify mnemonic is not empty
+				if mnemonic == "" {
+					t.Fatalf("iteration %d: mnemonic is empty", iteration)
+				}
+
+				// Mnemonic -> Entropy
+				recoveredEntropy, err := m.ArbitraryMnemonicToEntropy(mnemonic)
+				if err != nil {
+					t.Fatalf("iteration %d: failed to convert mnemonic to entropy: %v", iteration, err)
+				}
+
+				// Verify exact match
+				if len(recoveredEntropy) != len(entropy) {
+					t.Fatalf("iteration %d: entropy length mismatch: expected %d, got %d",
+						iteration, len(entropy), len(recoveredEntropy))
+				}
+
+				for i := range entropy {
+					if recoveredEntropy[i] != entropy[i] {
+						t.Fatalf("iteration %d: entropy mismatch at byte %d: expected %02x, got %02x",
+							iteration, i, entropy[i], recoveredEntropy[i])
+					}
+				}
+
+				// Verify double roundtrip: recovered entropy -> mnemonic should be same
+				mnemonic2, err := m.ArbitraryEntropyToMnemonic(recoveredEntropy)
+				if err != nil {
+					t.Fatalf("iteration %d: failed double roundtrip: %v", iteration, err)
+				}
+
+				if mnemonic != mnemonic2 {
+					t.Fatalf("iteration %d: mnemonic changed after roundtrip", iteration)
+				}
+			}
+		})
+	}
+}
+
+func TestArbitraryEntropyAtLimit(t *testing.T) {
+	m, _ := NewMnemonic()
+
+	// Test at the limit: 1024 bytes = 8192 bits = 256 checksum bits needed
+	entropy1024 := make([]byte, 1024)
+	for i := range entropy1024 {
+		entropy1024[i] = byte(i % 256)
+	}
+
+	t.Log("Testing 1024 bytes (8192 bits) - needs 256 checksum bits...")
+	mnemonic, err := m.ArbitraryEntropyToMnemonic(entropy1024)
+	if err != nil {
+		t.Fatalf("Failed at 1024 bytes: %v", err)
+	}
+	words, _ := SplitMnemonic(mnemonic)
+	t.Logf("Success! Generated %d word mnemonic", len(words))
+
+	// Test roundtrip
+	recovered, err := m.ArbitraryMnemonicToEntropy(mnemonic)
+	if err != nil {
+		t.Fatalf("Failed to recover: %v", err)
+	}
+	if len(recovered) != len(entropy1024) {
+		t.Fatalf("Length mismatch: %d != %d", len(recovered), len(entropy1024))
+	}
+	for i := range entropy1024 {
+		if recovered[i] != entropy1024[i] {
+			t.Fatalf("Byte mismatch at %d", i)
+		}
+	}
+	t.Log("Roundtrip successful!")
+}
+
+func TestArbitraryEntropyBeyondLimit(t *testing.T) {
+	m, _ := NewMnemonic()
+
+	tests := []struct {
+		name string
+		size int
+	}{
+		{"1028 bytes (just over limit)", 1028},
+		{"2048 bytes (double the limit)", 2048},
+		{"5000 bytes (far beyond limit)", 5000},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			entropy := make([]byte, tt.size)
+			for i := range entropy {
+				entropy[i] = byte(i % 256)
+			}
+
+			_, err := m.ArbitraryEntropyToMnemonic(entropy)
+			if err != ErrEntropyTooLarge {
+				t.Fatalf("Expected ErrEntropyTooLarge, got: %v", err)
+			}
+			t.Logf("Correctly rejected %d bytes with ErrEntropyTooLarge", tt.size)
+		})
+	}
+}
